@@ -77,5 +77,8 @@
       }
     ]
   },
-  "description": "Social Media Downloader: Download Videos via REST API"
+  "description": "Social Media Downloader: Download Videos via REST API",
+  "styling": {
+    "latex": true
+  }
 }
