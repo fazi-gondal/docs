@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "Social Media Downloader API",
+  "name": "SM Downloader API",
   "theme": "luma",
   "colors": {
     "primary": "#6366F1",
@@ -76,5 +76,6 @@
         ]
       }
     ]
-  }
+  },
+  "description": "Social Media Downloader: Download Videos via REST API"
 }
