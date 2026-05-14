@@ -1,0 +1,68 @@
+---
+title: "POST /api/download/start — Start Background Download"
+description: "Start a background video download and receive a download_id for tracking progress via SSE. Used with /api/download/progress and /api/download/file."
+sidebarTitle: "Start Download"
+---
+
+The `/api/download/start` endpoint initiates a background video download using yt-dlp and immediately returns a `download_id` UUID. Use this identifier to poll real-time progress via [`GET /api/download/progress/{download_id}`](/api-reference/download-progress) and to retrieve the completed file via [`GET /api/download/file/{download_id}`](/api-reference/download-file). This three-step pattern is the recommended approach when you need a progress bar in your UI.
+
+**Endpoint:** `POST /api/download/start`
+
+## Request parameters
+
+<ParamField body="url" type="string" required>
+  The full URL of the video to download. Supports all yt-dlp-compatible platforms: YouTube, Instagram, TikTok, Facebook, Twitter/X, Vimeo, and 1,000+ more.
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+curl --request POST \
+  --url https://fastapi-u8bm.onrender.com/api/download/start \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://fastapi-u8bm.onrender.com/api/download/start', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+  })
+});
+
+const { download_id } = await response.json();
+
+// Step 2: track progress
+// Step 3: fetch the file once status === 'completed'
+console.log('Download started:', download_id);
+```
+
+</CodeGroup>
+
+## Response example
+
+```json
+{
+  "download_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+## Response fields
+
+<ResponseField name="download_id" type="string" required>
+  A UUID v4 string that uniquely identifies this download job. Pass it to [`GET /api/download/progress/{download_id}`](/api-reference/download-progress) to receive SSE progress events, and to [`GET /api/download/file/{download_id}`](/api-reference/download-file) to retrieve the completed file.
+</ResponseField>
+
+<Note>
+  The download begins immediately in the background. The initial status is `"starting"` and transitions to `"downloading"` within a few hundred milliseconds. Progress events are emitted at 500ms intervals. See [`GET /api/download/progress/{download_id}`](/api-reference/download-progress) for the full event schema.
+</Note>
+
+<Warning>
+  There is no expiry on the `download_id` itself, but the downloaded temp file is deleted immediately after [`GET /api/download/file/{download_id}`](/api-reference/download-file) serves it. Files left un-fetched for more than 1 hour are also cleaned up automatically on server startup. Always call `/api/download/file/{download_id}` promptly after the progress stream reports `"completed"`.
+</Warning>

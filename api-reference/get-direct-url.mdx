@@ -1,0 +1,99 @@
+---
+title: "POST /api/get-direct-url — Resolve Download URL"
+description: "Resolve the download URL for a video. Returns a proxied /api/stream URL for CDN-blocked platforms (TikTok, Instagram) or a direct CDN URL for others."
+sidebarTitle: "Get Download URL"
+---
+
+The `/api/get-direct-url` endpoint resolves a video's downloadable URL without transferring the video file itself. For platforms that aggressively block direct mobile or browser fetching (such as TikTok and Instagram), it returns a proxied `/api/stream` URL that embeds the pre-resolved CDN address so the server can stream the file on your behalf. For other platforms the CDN URL is returned directly. The resolved URL is valid for up to 6 hours.
+
+**Endpoint:** `POST /api/get-direct-url`
+
+## Request parameters
+
+<ParamField body="url" type="string" required>
+  The full URL of the video. Supported platforms include TikTok, Instagram, YouTube, Facebook, Twitter/X, Vimeo, and 1,000+ more via yt-dlp.
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+curl --request POST \
+  --url https://fastapi-u8bm.onrender.com/api/get-direct-url \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "url": "https://www.tiktok.com/@user/video/7123456789012345678"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://fastapi-u8bm.onrender.com/api/get-direct-url', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    url: 'https://www.tiktok.com/@user/video/7123456789012345678'
+  })
+});
+
+const { data } = await response.json();
+
+// data.direct_url is ready to use — either a proxied /api/stream URL
+// or a CDN URL, depending on the platform.
+window.location.href = data.direct_url;
+```
+
+</CodeGroup>
+
+## Response example
+
+```json
+{
+  "success": true,
+  "data": {
+    "direct_url": "https://fastapi-u8bm.onrender.com/api/stream?url=https%3A%2F%2Fwww.tiktok.com%2F%40user%2Fvideo%2F7123456789012345678&direct_url=https%3A%2F%2Fcdn.tikwm.com%2Fvideo%2Ffile.mp4",
+    "filename": "Amazing_sunset_timelapse.mp4",
+    "filesize": 5200000,
+    "force_backend_stream": true,
+    "needs_proxy": false,
+    "use_server_download": false,
+    "expires_in": 21600
+  }
+}
+```
+
+## Response fields
+
+<ResponseField name="success" type="boolean" required>
+  `true` when the URL was resolved successfully. On failure the endpoint returns HTTP 400 with a `detail` field describing the error.
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  <Expandable title="properties" defaultOpen>
+    <ResponseField name="direct_url" type="string">
+      The URL to initiate the download from. When `force_backend_stream` is `true` this is a proxied `/api/stream` URL with the CDN address embedded as a query parameter. Otherwise it is a raw CDN URL.
+    </ResponseField>
+    <ResponseField name="filename" type="string">
+      Suggested filename for the downloaded file, derived from the video title and sanitized for filesystem use (e.g. `"Amazing_sunset_timelapse.mp4"`).
+    </ResponseField>
+    <ResponseField name="filesize" type="number">
+      Approximate file size in bytes reported by the CDN or yt-dlp. May be `0` when the platform does not expose size information.
+    </ResponseField>
+    <ResponseField name="force_backend_stream" type="boolean">
+      When `true`, the server has rewritten `direct_url` to point at `/api/stream` because the CDN blocks direct client-side fetching. Always `true` in the current implementation to ensure `Content-Disposition: attachment` is forwarded to the browser.
+    </ResponseField>
+    <ResponseField name="needs_proxy" type="boolean">
+      When `true`, the client should route the download through [`POST /api/proxy-stream`](/api-reference/proxy-stream) with custom headers. Currently always `false`; `force_backend_stream` takes precedence.
+    </ResponseField>
+    <ResponseField name="use_server_download" type="boolean">
+      When `true`, the client should use [`POST /api/server-stream`](/api-reference/server-stream) to merge DASH audio and video on the server. Currently always `false` for platforms resolved by this endpoint.
+    </ResponseField>
+    <ResponseField name="expires_in" type="number">
+      Number of seconds until the CDN URL expires. The resolved URL is valid for `21600` seconds (6 hours) from the time of the request.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  When `force_backend_stream` is `true`, the embedded `direct_url` query parameter in the `/api/stream` URL is the pre-resolved CDN address. This lets `/api/stream` skip a second API call and begin streaming immediately (fast path).
+</Note>

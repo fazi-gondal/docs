@@ -1,0 +1,96 @@
+---
+title: "POST /api/metadata — Fetch Video Metadata"
+description: "Fetch video title, thumbnail, duration, uploader, and platform from any supported URL without downloading the video. Returns data in 2–5 seconds."
+sidebarTitle: "Get Metadata"
+---
+
+The `/api/metadata` endpoint extracts video information for any URL supported by yt-dlp (YouTube, Instagram, TikTok, Facebook, Twitter/X, Vimeo, and 1,000+ more) without downloading the file. TikTok URLs are resolved through the TikWM API for faster, more reliable results. Use this endpoint to preview video details before deciding whether to download.
+
+**Endpoint:** `POST /api/metadata`
+
+## Request parameters
+
+<ParamField body="url" type="string" required>
+  The full URL of the video to fetch metadata for. Must be a URL from a supported platform (YouTube, Instagram, TikTok, Facebook, Twitter/X, Vimeo, etc.).
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+curl --request POST \
+  --url https://fastapi-u8bm.onrender.com/api/metadata \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "url": "https://www.tiktok.com/@user/video/7123456789012345678"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://fastapi-u8bm.onrender.com/api/metadata', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    url: 'https://www.tiktok.com/@user/video/7123456789012345678'
+  })
+});
+
+const { data } = await response.json();
+console.log(data.title, data.platform);
+```
+
+</CodeGroup>
+
+## Response example
+
+```json
+{
+  "success": true,
+  "data": {
+    "title": "Amazing sunset timelapse",
+    "thumbnail": "https://p16-sign.tiktokcdn-us.com/obj/tos-useast5-p-0068-tx/cover.jpg",
+    "duration": 45,
+    "uploader": "nature_clips",
+    "url": "https://www.tiktok.com/@user/video/7123456789012345678",
+    "platform": "tiktok"
+  }
+}
+```
+
+## Response fields
+
+<ResponseField name="success" type="boolean" required>
+  `true` when the request succeeds. On failure the endpoint returns HTTP 400 with a `detail` field describing the error.
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  <Expandable title="properties" defaultOpen>
+    <ResponseField name="title" type="string">
+      The video title as reported by the platform or yt-dlp.
+    </ResponseField>
+    <ResponseField name="thumbnail" type="string">
+      Absolute URL of the video thumbnail image. May return an empty string if the platform does not expose a thumbnail.
+    </ResponseField>
+    <ResponseField name="duration" type="number">
+      Video duration in seconds. Returns `0` when the platform does not report a duration.
+    </ResponseField>
+    <ResponseField name="uploader" type="string">
+      Display name of the channel or account that uploaded the video. Falls back to `"Unknown"` when unavailable.
+    </ResponseField>
+    <ResponseField name="url" type="string">
+      The original URL that was passed in the request body, echoed back for reference.
+    </ResponseField>
+    <ResponseField name="platform" type="string">
+      Lowercase platform identifier (e.g. `"tiktok"`, `"instagram"`, `"youtube"`). Comes from the yt-dlp extractor name for non-TikTok URLs.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  Thumbnail URLs returned for TikTok and Instagram are CDN-signed and may expire or return 403 errors when fetched directly from a browser. Pass them through [`GET /api/thumbnail`](/api-reference/thumbnail) to avoid CORS and auth issues.
+</Note>
+
+<Warning>
+  YouTube requests may trigger bot-detection if no `cookies.txt` is configured on the server, causing the endpoint to return HTTP 400. See the [YouTube cookies guide](/configuration/youtube-cookies) for details.
+</Warning>

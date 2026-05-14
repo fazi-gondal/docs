@@ -1,0 +1,54 @@
+---
+title: "Social Media Downloader: Download Videos via REST API"
+description: "A REST API for downloading videos from TikTok, Instagram, YouTube, and 1000+ platforms. Zero-disk streaming, server-side proxy, and real-time progress."
+---
+
+The Social Media Downloader API lets you download videos from TikTok, Instagram, YouTube, Facebook, Twitter/X, and over 1000 other platforms through a simple REST interface. It handles CDN authentication, watermark removal, stream proxying, and real-time progress tracking — so your app just calls an endpoint and receives a video file.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Make your first API call in minutes. Fetch metadata and download your first video.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/metadata">
+    Full reference for all 10 public endpoints with request and response examples.
+  </Card>
+  <Card title="React Native Integration" icon="mobile" href="/integration/react-native">
+    Step-by-step guide to integrating the API in your Expo or React Native app.
+  </Card>
+  <Card title="Supported Platforms" icon="globe" href="/platforms/overview">
+    See which platforms are supported and what quality options are available.
+  </Card>
+</CardGroup>
+
+## How it works
+
+The API acts as a server-side proxy between your app and video CDNs. When you request a download, the API resolves the direct CDN URL, bypasses CDN authentication requirements, and streams the video bytes directly to your client — without storing any data on disk.
+
+<Steps>
+  <Step title="Fetch video metadata">
+    Call `POST /api/metadata` with a video URL to get the title, thumbnail, duration, and platform.
+  </Step>
+  <Step title="Resolve the download URL">
+    Call `POST /api/get-direct-url` to get a proxied stream URL ready for download.
+  </Step>
+  <Step title="Download the video">
+    Use the returned URL with `GET /api/stream` to download the video with real-time `Content-Length` progress.
+  </Step>
+</Steps>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="TikTok without watermark" icon="video" href="/platforms/tiktok">
+    HD no-watermark downloads powered by the TikWM API with a single backend call.
+  </Card>
+  <Card title="Instagram HD quality" icon="camera" href="/platforms/instagram">
+    Download Reels, Posts, and IGTV in 720p or higher.
+  </Card>
+  <Card title="Real-time progress" icon="chart-line" href="/api-reference/download-progress">
+    Track download progress via Server-Sent Events (SSE) at 500ms intervals.
+  </Card>
+  <Card title="Zero-disk streaming" icon="bolt" href="/api-reference/stream">
+    Videos stream directly from CDN to your client — nothing is stored on the server.
+  </Card>
+</CardGroup>

@@ -1,0 +1,76 @@
+---
+title: "GET /api/stream — Server-Side Stream Proxy"
+description: "Proxy a CDN video stream to the client with no disk storage. Forwards Content-Length for native progress bars. Used automatically by /api/get-direct-url."
+sidebarTitle: "Stream Video"
+---
+
+The `/api/stream` endpoint proxies a CDN video stream directly to the client in 64 KB chunks without saving anything to the server's disk. It is the delivery layer behind [`POST /api/get-direct-url`](/api-reference/get-direct-url): when that endpoint returns a `force_backend_stream: true` response, the `direct_url` it provides already points here. You can also call this endpoint directly with any supported video URL.
+
+When the optional `direct_url` parameter is supplied, `/api/stream` skips its own resolution step and fetches the CDN address immediately — this is the fast path used by `/api/get-direct-url`. Without it, the endpoint calls the internal resolver first, which adds latency.
+
+**Endpoint:** `GET /api/stream`
+
+## Request parameters
+
+<ParamField query="url" type="string" required>
+  The original video page URL (e.g. a TikTok or Instagram link). Used to resolve the CDN address when `direct_url` is not provided.
+</ParamField>
+
+<ParamField query="direct_url" type="string">
+  A pre-resolved CDN video URL. When present, `/api/stream` skips the internal resolution API call and fetches this address directly. Provide this to use the fast path and avoid the extra round-trip.
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+# Fast path — supply the pre-resolved CDN URL
+curl --get "https://fastapi-u8bm.onrender.com/api/stream" \
+  --data-urlencode "url=https://www.tiktok.com/@user/video/7123456789012345678" \
+  --data-urlencode "direct_url=https://cdn.tikwm.com/video/file.mp4" \
+  --output video.mp4
+```
+
+```javascript JavaScript
+// Typically you receive this URL from /api/get-direct-url and open it directly.
+const params = new URLSearchParams({
+  url: 'https://www.tiktok.com/@user/video/7123456789012345678',
+  direct_url: 'https://cdn.tikwm.com/video/file.mp4'
+});
+
+// Trigger browser download
+window.location.href =
+  `https://fastapi-u8bm.onrender.com/api/stream?${params.toString()}`;
+```
+
+</CodeGroup>
+
+## Response
+
+The endpoint returns a binary video stream, not a JSON object. The response headers control browser behavior:
+
+```
+HTTP/1.1 200 OK
+Content-Type: video/mp4
+Content-Disposition: attachment; filename="Amazing_sunset_timelapse.mp4"; filename*=UTF-8''Amazing_sunset_timelapse.mp4
+Content-Length: 5200000
+Cache-Control: no-cache
+X-Accel-Buffering: no
+```
+
+| Header | Description |
+|---|---|
+| `Content-Type` | MIME type forwarded from the CDN response (typically `video/mp4`). |
+| `Content-Disposition` | Set to `attachment` with the sanitized filename to force a Save-As dialog. Uses RFC 5987 encoding for non-ASCII filenames. |
+| `Content-Length` | File size in bytes forwarded from the CDN when available. Enables native progress tracking in `fetch` and `XMLHttpRequest`. |
+| `Cache-Control` | Always `no-cache` to prevent stale CDN URL caching. |
+| `X-Accel-Buffering` | Set to `no` to disable Nginx proxy buffering and allow true streaming. |
+
+<Note>
+  `Content-Length` is forwarded only when the upstream CDN includes it. Some CDNs serve video with chunked transfer encoding and omit `Content-Length`, in which case progress tracking based on byte count is not available.
+</Note>
+
+<Warning>
+  The CDN URLs embedded in the `direct_url` parameter expire after 6 hours (`expires_in: 21600`). Requests made with an expired URL will receive an HTTP 403 or 404 from the CDN, which the server surfaces as an HTTP 500 error.
+</Warning>

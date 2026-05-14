@@ -1,0 +1,92 @@
+---
+title: "POST /api/proxy-stream — Lightweight CDN Proxy"
+description: "Proxy a CDN video URL to the client with custom headers. Use when the CDN requires Referer or User-Agent headers that browsers cannot set freely."
+sidebarTitle: "Proxy Stream"
+---
+
+The `/api/proxy-stream` endpoint acts as a thin pass-through proxy between your client and a CDN video URL. It streams the video in 64 KB chunks directly to the client without saving anything to disk. Use this endpoint when the target CDN rejects requests that lack specific `Referer` or `User-Agent` headers — headers that browsers and React Native cannot set freely due to security restrictions. The server attaches these headers on behalf of the client.
+
+**Endpoint:** `POST /api/proxy-stream`
+
+## Request parameters
+
+<ParamField body="direct_url" type="string" required>
+  The CDN video URL to proxy. Must be a direct video file URL (e.g. a `tikwm.com` CDN link), not a video page URL.
+</ParamField>
+
+<ParamField body="filename" type="string" default="video.mp4">
+  The filename to use in the `Content-Disposition` response header. Determines the name of the file when the user saves it. Defaults to `"video.mp4"` when omitted.
+</ParamField>
+
+<ParamField body="headers" type="object">
+  A key-value map of additional HTTP headers to include when requesting the CDN URL. Use this to pass `Referer`, `Origin`, or other CDN-specific headers. The server always includes a browser-like `User-Agent` regardless of this field.
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+curl --request POST \
+  --url https://fastapi-u8bm.onrender.com/api/proxy-stream \
+  --header 'Content-Type: application/json' \
+  --output video.mp4 \
+  --data '{
+    "direct_url": "https://www.tikwm.com/video/media/play/7123456789012345678.mp4",
+    "filename": "Amazing_sunset_timelapse.mp4",
+    "headers": {
+      "Referer": "https://www.tikwm.com/"
+    }
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://fastapi-u8bm.onrender.com/api/proxy-stream', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    direct_url: 'https://www.tikwm.com/video/media/play/7123456789012345678.mp4',
+    filename: 'Amazing_sunset_timelapse.mp4',
+    headers: { Referer: 'https://www.tikwm.com/' }
+  })
+});
+
+// Stream to a blob for download
+const blob = await response.blob();
+const objectUrl = URL.createObjectURL(blob);
+
+const a = document.createElement('a');
+a.href = objectUrl;
+a.download = 'Amazing_sunset_timelapse.mp4';
+a.click();
+URL.revokeObjectURL(objectUrl);
+```
+
+</CodeGroup>
+
+## Response
+
+The endpoint returns a binary video stream. No JSON body is returned.
+
+```
+HTTP/1.1 200 OK
+Content-Type: video/mp4
+Content-Disposition: attachment; filename="Amazing_sunset_timelapse.mp4"; filename*=UTF-8''Amazing_sunset_timelapse.mp4
+Cache-Control: no-cache
+X-Accel-Buffering: no
+```
+
+| Header | Description |
+|---|---|
+| `Content-Type` | Always `video/mp4`. |
+| `Content-Disposition` | `attachment` with the value of the `filename` request field. Uses RFC 5987 encoding for non-ASCII filenames. |
+| `Cache-Control` | Always `no-cache`. |
+| `X-Accel-Buffering` | `no` to disable Nginx proxy buffering and allow streaming. |
+
+<Note>
+  Unlike [`GET /api/stream`](/api-reference/stream), this endpoint does not forward `Content-Length` from the CDN, so byte-based progress tracking is not available. For downloads where progress tracking matters, use the [`POST /api/download/start`](/api-reference/download-start) → [`GET /api/download/progress/{download_id}`](/api-reference/download-progress) flow instead.
+</Note>
+
+<Warning>
+  If the CDN returns a non-200/206 status code, the endpoint returns HTTP 502 with a `detail` field containing the CDN status code. This typically means the `direct_url` has expired or the required headers are missing.
+</Warning>

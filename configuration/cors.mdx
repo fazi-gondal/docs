@@ -1,0 +1,24 @@
+---
+title: "CORS Configuration and Cross-Origin Requests"
+description: "The Social Media Downloader API has CORS enabled for all origins by default. Learn how it works and what to do if you need to restrict access in production."
+---
+
+The API ships with `allow_origins=["*"]` in its CORS middleware, which means any client can call it without cross-origin restrictions. You do not need to configure anything on the client side — requests from browsers, React Native apps, and Expo Go work out of the box.
+
+## What this means for you
+
+**No `Origin` header issues from browsers.** The wildcard CORS policy means the browser will never block a preflight request from your web app, regardless of which domain it is served from.
+
+**Works in React Native and Expo Go without any extra config.** Expo Go runs on a dynamic origin that changes per session. Because all origins are allowed, your API calls from the Expo Go client succeed without any special handling.
+
+**Can be called from any domain.** Whether your frontend is on `localhost`, a Vercel preview URL, or a custom domain, the API will accept the request.
+
+<Note>
+  CORS is already configured on the server. You do not need to set any headers in your requests — no `Access-Control-Allow-Origin` or `Origin` headers are required in your client code.
+</Note>
+
+## Restricting access in production
+
+The open wildcard policy is convenient for development and public APIs. If you are self-hosting the API and need to limit which origins can call it — for example, to prevent unauthorized third-party clients from consuming your server bandwidth — you can configure the CORS middleware to list specific allowed origins instead of `"*"`.
+
+This is a server-side change that requires a redeploy. It does not affect the API contract or any client code — it only controls which domains the server will respond to from a browser context.

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Social Media Downloader API",
+  "theme": "luma",
+  "colors": {
+    "primary": "#6366F1",
+    "light": "#818CF8",
+    "dark": "#4338CA"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/fazi-gondal/FastAPI"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "deployment"]
+          },
+          {
+            "group": "Integration",
+            "pages": [
+              "integration/web",
+              "integration/react-native",
+              "integration/typescript-service"
+            ]
+          },
+          {
+            "group": "Platforms",
+            "pages": [
+              "platforms/overview",
+              "platforms/tiktok",
+              "platforms/instagram",
+              "platforms/youtube"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/youtube-cookies",
+              "configuration/cors"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/common-issues",
+              "troubleshooting/error-handling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api-reference/metadata",
+              "api-reference/get-direct-url",
+              "api-reference/stream",
+              "api-reference/tiktok-info",
+              "api-reference/proxy-stream",
+              "api-reference/server-stream",
+              "api-reference/download-start",
+              "api-reference/download-progress",
+              "api-reference/download-file",
+              "api-reference/thumbnail"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

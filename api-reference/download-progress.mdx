@@ -1,0 +1,117 @@
+---
+title: "GET /api/download/progress/{id} — Track Progress via SSE"
+description: "Stream real-time download progress events via Server-Sent Events (SSE). Events include status, progress percentage, and filename at 500ms intervals."
+sidebarTitle: "Download Progress"
+---
+
+The `/api/download/progress/{download_id}` endpoint opens a Server-Sent Events (SSE) stream that emits the current download state every 500ms. Connect to this endpoint immediately after receiving a `download_id` from [`POST /api/download/start`](/api-reference/download-start). The stream closes automatically when the download reaches a terminal state (`"completed"` or `"error"`). Once you receive `"completed"`, call [`GET /api/download/file/{download_id}`](/api-reference/download-file) to retrieve the file.
+
+**Endpoint:** `GET /api/download/progress/{download_id}`
+
+## Path parameters
+
+<ParamField path="download_id" type="string" required>
+  The UUID returned by [`POST /api/download/start`](/api-reference/download-start). If the ID is not found, the stream immediately emits an error event and closes.
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+# curl will print each SSE event as it arrives
+curl --no-buffer \
+  "https://fastapi-u8bm.onrender.com/api/download/progress/123e4567-e89b-12d3-a456-426614174000"
+```
+
+```javascript JavaScript
+const downloadId = '123e4567-e89b-12d3-a456-426614174000';
+
+const eventSource = new EventSource(
+  `https://fastapi-u8bm.onrender.com/api/download/progress/${downloadId}`
+);
+
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.status === 'starting' || data.status === 'downloading') {
+    console.log(`Progress: ${data.progress}%`);
+    updateProgressBar(data.progress);
+
+  } else if (data.status === 'completed') {
+    console.log('Download complete:', data.filename);
+    eventSource.close();
+
+    // Step 3: fetch the file
+    window.location.href =
+      `https://fastapi-u8bm.onrender.com/api/download/file/${downloadId}`;
+
+  } else if (data.status === 'error') {
+    console.error('Download failed:', data.error);
+    eventSource.close();
+  }
+};
+
+eventSource.onerror = () => {
+  console.error('SSE connection lost');
+  eventSource.close();
+};
+```
+
+</CodeGroup>
+
+## SSE event stream
+
+The response uses `Content-Type: text/event-stream`. Each event is a single `data:` line followed by two newlines.
+
+```
+data: {"status": "starting", "progress": 0, "filename": null, "filepath": null}
+
+data: {"status": "downloading", "progress": 15.5, "filename": null, "filepath": null}
+
+data: {"status": "downloading", "progress": 47.2, "filename": null, "filepath": null}
+
+data: {"status": "downloading", "progress": 89.1, "filename": null, "filepath": null}
+
+data: {"status": "completed", "progress": 100, "filename": "Amazing_sunset_timelapse.mp4", "filepath": "/server/path/to/Amazing_sunset_timelapse.mp4"}
+```
+
+**Error event:**
+
+```
+data: {"status": "error", "error": "Failed to download video"}
+```
+
+## Event fields
+
+<ResponseField name="status" type="string" required>
+  Current state of the download job. One of:
+  - `"starting"` — the job has been queued but yt-dlp has not yet begun fetching bytes.
+  - `"downloading"` — yt-dlp is actively downloading; `progress` is being updated.
+  - `"completed"` — the download finished successfully; `filename` and `filepath` are populated.
+  - `"error"` — the download failed; an `error` field is present instead of `progress`.
+</ResponseField>
+
+<ResponseField name="progress" type="number">
+  Download completion percentage from `0` to `100`, rounded to one decimal place. Only meaningful when `status` is `"downloading"` or `"completed"`. Not present in error events.
+</ResponseField>
+
+<ResponseField name="filename" type="string">
+  The sanitized filename of the downloaded file (e.g. `"Amazing_sunset_timelapse.mp4"`). `null` until the download completes.
+</ResponseField>
+
+<ResponseField name="filepath" type="string">
+  Server-side reference to the downloaded file. `null` until the download completes. Do not use this path directly — retrieve the file via [`GET /api/download/file/{download_id}`](/api-reference/download-file) using the `download_id`.
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Human-readable error message. Only present when `status` is `"error"`.
+</ResponseField>
+
+<Note>
+  Progress reporting depends on yt-dlp's internal hooks. For some platforms or video formats, the percentage may jump non-linearly or report `0` for an extended period before quickly reaching `100`. This is a yt-dlp behavior, not an API issue.
+</Note>
+
+<Warning>
+  `EventSource` in browsers does not support custom request headers. If you need to send an `Authorization` header or use `POST`, use a polyfill such as `@microsoft/fetch-event-source` instead of the native `EventSource` API.
+</Warning>

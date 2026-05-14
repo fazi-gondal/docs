@@ -1,0 +1,145 @@
+---
+title: "Download YouTube Videos with Best Quality"
+description: "Download YouTube videos in the best available quality merged to MP4. Supports bot-detection bypass with cookie configuration for restricted content."
+---
+
+The API downloads YouTube videos using yt-dlp, selecting the best available video and audio streams and merging them into a single MP4 file. Most public YouTube videos work without any configuration. For videos that trigger bot-detection challenges, you can supply exported browser cookies to restore access.
+
+## What you get
+
+yt-dlp selects the highest-quality video stream and the best matching audio stream, then merges them into an MP4 container before delivering the file. You do not need to handle stream selection or merging in your client.
+
+## Download flow
+
+<Steps>
+  <Step title="Fetch metadata">
+    Call `POST /api/metadata` with the YouTube URL to get the title, thumbnail, duration, and uploader.
+
+    ```bash
+    curl -X POST https://fastapi-u8bm.onrender.com/api/metadata \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
+    ```
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "title": "Video title",
+        "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+        "duration": 212,
+        "uploader": "Channel Name",
+        "platform": "youtube"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Get the download URL">
+    Call `POST /api/get-direct-url`. YouTube responses may include `force_backend_stream: false`, which means the CDN URL can be fetched directly without routing through the server proxy — useful for reducing server bandwidth usage.
+
+    ```bash
+    curl -X POST https://fastapi-u8bm.onrender.com/api/get-direct-url \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
+    ```
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "direct_url": "https://fastapi-u8bm.onrender.com/api/stream?url=...",
+        "filename": "video_title.mp4",
+        "filesize": 42000000,
+        "force_backend_stream": false
+      }
+    }
+    ```
+  </Step>
+  <Step title="Download the video">
+    Pass `direct_url` to your downloader regardless of `force_backend_stream`. The URL is always ready to use — no client-side switching required.
+
+    ```typescript
+    const downloadResumable = FileSystem.createDownloadResumable(
+      direct_url,
+      fileUri,
+      {},
+      (progress) => {
+        const pct = progress.totalBytesExpectedToWrite > 0
+          ? (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100
+          : 0;
+        setProgress(pct);
+      }
+    );
+    const result = await downloadResumable.downloadAsync();
+    ```
+  </Step>
+</Steps>
+
+<Note>
+When `force_backend_stream` is `false` in the `POST /api/get-direct-url` response, the client can fetch the video directly from YouTube's CDN without going through the server proxy. The `direct_url` still points to `/api/stream` for consistency — the server handles routing automatically.
+</Note>
+
+## Cookie support for bot-detection bypass
+
+YouTube periodically serves bot-detection challenges that block yt-dlp from extracting download URLs. When this happens, requests return a 400 error with a message about sign-in requirements or bot challenges. Supplying exported browser cookies resolves this for most videos.
+
+### Setting up cookies
+
+<Steps>
+  <Step title="Install the browser extension">
+    Install the [Get cookies.txt](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension for Chrome, or the equivalent for your browser.
+  </Step>
+  <Step title="Export cookies from YouTube">
+    Navigate to `https://www.youtube.com` while signed in. Click the extension icon and export cookies for the current site. The file should be in Netscape cookie format.
+  </Step>
+  <Step title="Save the file to the server">
+    Save the exported file as `cookies.txt` in the root of the server project directory (the same folder as `main.py`).
+  </Step>
+  <Step title="Restart the server">
+    Restart the server process. yt-dlp automatically picks up the `cookies.txt` file on the next request.
+
+    ```bash
+    uvicorn main:app --host 0.0.0.0 --port 8000
+    ```
+  </Step>
+</Steps>
+
+For full details, see the [YouTube cookies configuration guide](/configuration/youtube-cookies).
+
+## Full example: fetch metadata and download
+
+```typescript
+import axios from 'axios';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const API_URL = 'https://fastapi-u8bm.onrender.com';
+
+const downloadYouTubeVideo = async (url: string): Promise<string> => {
+  // Step 1: Get metadata for display
+  const metaResponse = await axios.post(`${API_URL}/api/metadata`, { url });
+  const metadata = metaResponse.data.data;
+  console.log(`Downloading: ${metadata.title}`);
+
+  // Step 2: Get the download URL
+  const urlResponse = await axios.post(`${API_URL}/api/get-direct-url`, { url });
+  const { direct_url, filename } = urlResponse.data.data;
+
+  // Step 3: Download to device
+  const fileUri = `${FileSystem.documentDirectory}${filename}`;
+  const downloadResumable = FileSystem.createDownloadResumable(
+    direct_url,
+    fileUri,
+    {},
+    (progress) => {
+      const pct = progress.totalBytesExpectedToWrite > 0
+        ? (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100
+        : 0;
+      console.log(`Progress: ${pct.toFixed(1)}%`);
+    }
+  );
+
+  const result = await downloadResumable.downloadAsync();
+  if (!result) throw new Error('Download failed');
+  return result.uri;
+};
+```

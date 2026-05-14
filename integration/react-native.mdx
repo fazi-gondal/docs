@@ -1,0 +1,225 @@
+---
+title: "React Native & Expo Integration Guide"
+description: "Integrate the Social Media Downloader API in your React Native or Expo app using expo-file-system for native progress tracking and gallery saving."
+---
+
+Mobile apps cannot download videos directly from TikTok, Instagram, or most social CDNs. These platforms enforce strict `Referer` and `Origin` header checks, use token-based auth that rejects non-browser clients, and apply CORS policies that block React Native's `fetch`. The Social Media Downloader API solves this with a server-side stream proxy: your app makes two API calls, receives a `/api/stream` URL, and passes it to `expo-file-system` — which handles native progress tracking and file saving without any platform-specific switching on your end.
+
+**API URL:** `https://fastapi-u8bm.onrender.com`
+
+## Installation
+
+```bash
+npx expo install expo-file-system expo-media-library axios
+```
+
+<Steps>
+  <Step title="Fetch metadata for your UI">
+    Call `POST /api/metadata` to get the video title, thumbnail, duration, and uploader. Display this to the user before they confirm the download.
+
+    ```typescript
+    const response = await axios.post(`${API_URL}/api/metadata`, {
+      url: 'https://www.tiktok.com/@user/video/123456',
+    });
+
+    const { title, thumbnail, duration, uploader, platform } = response.data.data;
+    ```
+
+    **Request body:**
+    ```json
+    { "url": "https://www.tiktok.com/@user/video/123456" }
+    ```
+
+    **Response:**
+    ```json
+    {
+      "success": true,
+      "data": {
+        "title": "Video title",
+        "thumbnail": "https://cdn.tiktok.com/cover.jpg",
+        "duration": 30,
+        "uploader": "username",
+        "platform": "tiktok",
+        "url": "https://www.tiktok.com/..."
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Get the proxied download URL">
+    Call `POST /api/get-direct-url` to receive the download URL. For all platforms, the API returns a `/api/stream` proxy URL — your app does not need to handle platform differences.
+
+    ```typescript
+    const response = await axios.post(`${API_URL}/api/get-direct-url`, {
+      url: videoUrl,
+    });
+
+    const { direct_url, filename } = response.data.data;
+    ```
+
+    **Response:**
+    ```json
+    {
+      "success": true,
+      "data": {
+        "direct_url": "https://fastapi-u8bm.onrender.com/api/stream?url=...&direct_url=<cdn_url>",
+        "filename": "video_title.mp4",
+        "filesize": 5200000,
+        "force_backend_stream": true,
+        "expires_in": 21600
+      }
+    }
+    ```
+
+    Pass `direct_url` directly to `FileSystem.createDownloadResumable` in the next step — the backend has already routed TikTok, Instagram, and YouTube through the correct proxy.
+  </Step>
+
+  <Step title="Download with native progress tracking">
+    Use `FileSystem.createDownloadResumable` to stream the file to the device. The `/api/stream` proxy forwards `Content-Length` from the CDN, so the progress callback receives real byte counts.
+
+    ```typescript
+    import * as FileSystem from 'expo-file-system/legacy';
+
+    const fileUri = `${FileSystem.documentDirectory}${sanitizedFilename}`;
+
+    const downloadResumable = FileSystem.createDownloadResumable(
+      direct_url,
+      fileUri,
+      {},
+      (downloadProgress) => {
+        const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
+        const percentage =
+          totalBytesExpectedToWrite > 0
+            ? (totalBytesWritten / totalBytesExpectedToWrite) * 100
+            : 0;
+        setProgress(percentage);
+      }
+    );
+
+    const result = await downloadResumable.downloadAsync();
+    ```
+  </Step>
+
+  <Step title="Save to the device gallery">
+    After `downloadAsync` resolves, save the local file to the user's photo library using `MediaLibrary.createAssetAsync`.
+
+    ```typescript
+    import * as MediaLibrary from 'expo-media-library';
+
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      throw new Error('Gallery permission denied');
+    }
+
+    const asset = await MediaLibrary.createAssetAsync(result.uri);
+    await MediaLibrary.createAlbumAsync('Downloads', asset, false);
+    ```
+  </Step>
+</Steps>
+
+## Complete TypeScript service
+
+The full service module used in production. See the [TypeScript service reference](/integration/typescript-service) for detailed function documentation.
+
+```typescript
+import axios from 'axios';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const API_URL = 'https://fastapi-u8bm.onrender.com';
+
+const sanitizeFilename = (filename: string): string => {
+  try { filename = decodeURIComponent(filename); } catch (e) {}
+  return filename
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[^\w\-. ]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .substring(0, 100)
+    || `video_${Date.now()}.mp4`;
+};
+
+export const fetchVideoMetadata = async (url: string) => {
+  const response = await axios.post(`${API_URL}/api/metadata`, { url });
+  if (!response.data.success) throw new Error('Failed to fetch metadata');
+  return response.data.data;
+};
+
+export const downloadVideo = async (
+  videoUrl: string,
+  metadata: any,
+  onProgress?: (progress: { totalBytes: number; downloadedBytes: number; percentage: number }) => void
+): Promise<string> => {
+  const response = await axios.post(`${API_URL}/api/get-direct-url`, { url: videoUrl });
+  if (!response.data.success) throw new Error('Failed to get download URL');
+
+  const { direct_url, filename } = response.data.data;
+  const sanitizedFilename = sanitizeFilename(filename || `${Date.now()}_video.mp4`);
+  const fileUri = `${FileSystem.documentDirectory}${sanitizedFilename}`;
+
+  await FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
+
+  const downloadResumable = FileSystem.createDownloadResumable(
+    direct_url,
+    fileUri,
+    {},
+    (downloadProgress) => {
+      onProgress?.({
+        totalBytes: downloadProgress.totalBytesExpectedToWrite,
+        downloadedBytes: downloadProgress.totalBytesWritten,
+        percentage: downloadProgress.totalBytesExpectedToWrite > 0
+          ? (downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite) * 100
+          : 0,
+      });
+    }
+  );
+
+  const result = await downloadResumable.downloadAsync();
+  if (!result) throw new Error('Download failed');
+  return result.uri;
+};
+
+export const getThumbnailUrl = (thumbnailUrl: string): string =>
+  `${API_URL}/api/thumbnail?url=${encodeURIComponent(thumbnailUrl)}`;
+```
+
+## Home screen integration
+
+```typescript
+import { downloadVideo, fetchVideoMetadata, getThumbnailUrl } from '../services/videoDownloader';
+import * as MediaLibrary from 'expo-media-library';
+
+const handleDownload = async () => {
+  setStatus('downloading');
+  setProgress(0);
+
+  try {
+    const localUri = await downloadVideo(videoUrl, metadata, (p) => {
+      setProgress(p.percentage);
+    });
+
+    const { status } = await MediaLibrary.getPermissionsAsync();
+    if (status === 'granted') {
+      await MediaLibrary.createAssetAsync(localUri);
+    }
+
+    setStatus('completed');
+  } catch (error) {
+    setStatus('error');
+    setErrorMessage(error.message);
+  }
+};
+```
+
+<Note>
+**TikTok progress tracking:** TikTok's CDN sometimes uses chunked transfer encoding, which means the response has no `Content-Length` header. When this happens, `totalBytesExpectedToWrite` is `-1` and the `percentage` calculation returns `0`. Show received megabytes instead:
+
+```typescript
+const pct = progress.totalBytes > 0 ? progress.percentage : null;
+// If null: `${(progress.downloadedBytes / 1024 / 1024).toFixed(1)} MB downloaded`
+```
+</Note>
+
+<Warning>
+Request `MediaLibrary.requestPermissionsAsync()` before calling `MediaLibrary.createAssetAsync`. On Android, the app will crash silently if the permission is missing. On iOS, the system will show a permission dialog the first time — call it early in your app's lifecycle so it does not appear mid-download.
+</Warning>

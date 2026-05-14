@@ -1,0 +1,90 @@
+---
+title: "GET /api/download/file/{id} — Retrieve Downloaded File"
+description: "Download the completed video file using a download_id from /api/download/start. Returns the video binary with Content-Disposition forcing a Save-As dialog."
+sidebarTitle: "Get File"
+---
+
+The `/api/download/file/{download_id}` endpoint serves the video file produced by a completed background download job. Call this endpoint after [`GET /api/download/progress/{download_id}`](/api-reference/download-progress) emits a `"completed"` event. The file is served with `Content-Disposition: attachment` to trigger a browser Save-As dialog. The temp file is deleted from the server immediately after it is served, so each `download_id` can only be used once.
+
+**Endpoint:** `GET /api/download/file/{download_id}`
+
+## Path parameters
+
+<ParamField path="download_id" type="string" required>
+  The UUID returned by [`POST /api/download/start`](/api-reference/download-start). Must correspond to a download job that has reached `"completed"` status.
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+curl --output video.mp4 \
+  "https://fastapi-u8bm.onrender.com/api/download/file/123e4567-e89b-12d3-a456-426614174000"
+```
+
+```javascript JavaScript
+const downloadId = '123e4567-e89b-12d3-a456-426614174000';
+
+// Trigger browser download directly
+window.location.href =
+  `https://fastapi-u8bm.onrender.com/api/download/file/${downloadId}`;
+
+// — or — fetch programmatically and save as a blob
+const response = await fetch(
+  `https://fastapi-u8bm.onrender.com/api/download/file/${downloadId}`
+);
+
+if (!response.ok) {
+  const { detail } = await response.json();
+  throw new Error(detail);
+}
+
+const blob = await response.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'video.mp4'; // overridden by Content-Disposition in most browsers
+a.click();
+URL.revokeObjectURL(url);
+```
+
+</CodeGroup>
+
+## Response
+
+On success the endpoint returns a binary video file, not a JSON object.
+
+```
+HTTP/1.1 200 OK
+Content-Type: video/mp4
+Content-Disposition: attachment; filename="Amazing_sunset_timelapse.mp4"; filename*=UTF-8''Amazing_sunset_timelapse.mp4
+Cache-Control: no-cache
+```
+
+| Header | Description |
+|---|---|
+| `Content-Type` | Always `video/mp4`. |
+| `Content-Disposition` | `attachment` with the sanitized video title as the filename, forcing a Save-As dialog. Uses RFC 5987 encoding for non-ASCII filenames. |
+| `Cache-Control` | Always `no-cache`. |
+
+## Error responses
+
+| Status | Condition |
+|---|---|
+| `404` | The `download_id` does not exist, or the temp file was already deleted (file already served or cleaned up by the server). |
+| `400` | The download job exists but has not yet reached `"completed"` status. Wait for the progress stream to emit `"completed"` before calling this endpoint. |
+
+```json
+{
+  "detail": "Download not completed yet"
+}
+```
+
+<Warning>
+  The temp file is deleted from the server as soon as the response is fully sent. Calling this endpoint a second time with the same `download_id` returns HTTP 404. If you need the file more than once, save it on the client side before the response stream closes.
+</Warning>
+
+<Note>
+  The progress tracking entry (`download_id` → state) is also removed from server memory approximately 5 seconds after the file is served. Subsequent progress requests for the same ID will return an error event.
+</Note>

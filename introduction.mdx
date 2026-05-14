@@ -1,0 +1,55 @@
+---
+title: "SM Downloader"
+description: "The Social Media Downloader API streams videos from TikTok, Instagram, YouTube, and 1000+ platforms with no watermarks and real-time progress."
+---
+
+The Social Media Downloader API lets you fetch video metadata and stream video files from TikTok, Instagram, YouTube, and over 1000 other platforms — all through a single HTTP API. You send a URL, and the API resolves the video, handles CDN authentication on your behalf, and streams the file directly to your client. No API key is required, and CORS is open so you can call it from any browser, mobile app, or server.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Multi-platform support" icon="globe">
+    Download from TikTok, Instagram, YouTube, Facebook, Twitter/X, Vimeo, Reddit, and 1000+ additional sites powered by yt-dlp.
+  </Card>
+  <Card title="TikTok without watermark" icon="circle-check">
+    HD no-watermark TikTok downloads via the TikWM API. The API calls TikWM once per request and embeds the resolved CDN URL in the stream proxy for a fast, single-hop download.
+  </Card>
+  <Card title="Server-side proxy stream" icon="server">
+    The API proxies video bytes from platform CDNs to your client in 64 KB chunks. You never deal with blocked CDN requests, CORS errors, or missing authentication headers.
+  </Card>
+  <Card title="Real-time progress" icon="chart-line">
+    Start a download in the background and track byte-by-byte progress over Server-Sent Events. Useful for showing progress bars in web and mobile apps.
+  </Card>
+</CardGroup>
+
+## Supported platforms
+
+- **TikTok** — watermark-free HD downloads via TikWM
+- **Instagram** — Posts, Reels, and IGTV in 720p+
+- **YouTube** — best video and audio quality, merged to MP4
+- **Facebook**
+- **Twitter/X**
+- **Vimeo**
+- **Reddit**
+- **1000+ more** via yt-dlp
+
+## Download architecture
+
+Every download follows a two-step flow:
+
+1. **Resolve** — Call `POST /api/get-direct-url` with a video URL. The API uses yt-dlp or the TikWM API to extract the real CDN URL and returns either a direct CDN link or a pre-built `/api/stream` proxy URL.
+2. **Stream** — Hit `GET /api/stream` with the URL returned in step 1. The server fetches video bytes from the CDN and proxies them directly to your client. No file is stored on the server beyond the duration of the request.
+
+For platforms like TikTok whose CDNs block direct client access, `force_backend_stream` is set to `true` in the response and the `direct_url` is already pointed at `/api/stream` — so your client just follows the URL without any extra logic.
+
+## Base URL
+
+```
+https://fastapi-u8bm.onrender.com
+```
+
+All endpoints below are relative to this base URL.
+
+## CORS
+
+CORS is enabled for all origins (`*`). You can call the API from any browser, React Native app, or server without any preflight configuration.

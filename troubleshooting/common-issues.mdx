@@ -1,0 +1,91 @@
+---
+title: "Common Issues and Fixes for Video Downloads"
+description: "Fix common Social Media Downloader API errors: TikTok 500 errors, YouTube bot detection, missing audio, and progress stuck at 0%."
+---
+
+Most download failures fall into a small set of known patterns — expired CDN tokens, missing cookies, platform-specific stream formats, or permission gaps on mobile. The issues below cover the most common problems and how to resolve them quickly.
+
+<AccordionGroup>
+  <Accordion title="TikTok returns 500 error">
+    TikTok CDN URLs include a token that expires after approximately six hours. If the token has expired by the time your client uses the URL, the CDN returns an error that the server propagates as a 500 response.
+
+    **Fix:** Re-call `/api/get-direct-url` to get a fresh CDN URL and retry the download immediately. Do not cache or store direct URLs across sessions.
+
+    Also make sure `httpx` is on the latest version, since older versions can mishandle certain TikTok CDN redirect chains:
+
+    ```bash
+    pip install --upgrade httpx
+    ```
+  </Accordion>
+
+  <Accordion title="YouTube bot detection / 403 error">
+    YouTube requires session authentication for age-restricted videos and sometimes for any video when it detects automated access patterns. The API returns a 403 or a bot detection error in the `detail` field.
+
+    **Fix:** Set up `cookies.txt` with your YouTube session credentials. See [Configure YouTube Cookie Authentication](/configuration/youtube-cookies) for step-by-step instructions.
+  </Accordion>
+
+  <Accordion title="Progress bar stuck at 0% (TikTok)">
+    TikTok CDN sometimes uses chunked transfer encoding without sending a `Content-Length` header. When this happens, `totalBytesExpectedToWrite` in `expo-file-system` returns `-1`, and any percentage-based progress calculation stays at 0%.
+
+    This is a CDN behaviour, not an API bug — the download is still proceeding.
+
+    **Fix:** Display received megabytes instead of a percentage when `totalBytesExpectedToWrite` is `-1`:
+
+    ```typescript
+    FileSystem.createDownloadResumable(
+      downloadUrl,
+      localPath,
+      {},
+      ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+        if (totalBytesExpectedToWrite === -1) {
+          const mb = (totalBytesWritten / 1024 / 1024).toFixed(1);
+          setProgressLabel(`${mb} MB downloaded`);
+        } else {
+          const pct = totalBytesWritten / totalBytesExpectedToWrite;
+          setProgress(pct);
+        }
+      }
+    );
+    ```
+  </Accordion>
+
+  <Accordion title="Video saved but no audio (Instagram)">
+    Instagram sometimes serves DASH streams where video and audio are in separate tracks. If you download the video-only track directly via the CDN URL, the saved file has no audio.
+
+    **Fix:** Use `POST /api/server-stream` instead of streaming the CDN URL directly. This endpoint runs yt-dlp on the server and merges the audio and video tracks before streaming the result to your client.
+  </Accordion>
+
+  <Accordion title="Download fails with network error (mobile)">
+    Network errors on mobile can come from a few different sources:
+
+    - **Expired CDN token (TikTok).** TikTok direct URLs expire in approximately six hours. Re-call `/api/get-direct-url` to get a fresh URL and retry.
+    - **Server cold start (Render free tier).** Free-tier Render services spin down after inactivity. The first request after a sleep period can take up to 30 seconds. Wait and retry.
+    - **Connectivity issue.** Check the raw error for network-level failures.
+
+    To see the server's error message in your error handler:
+
+    ```typescript
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        console.error(error.response?.data?.detail);
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Permission denied (Android)">
+    Android requires explicit runtime permission before your app can write files to the device gallery. If you skip the permission request, `MediaLibrary.createAssetAsync` throws a permission denied error.
+
+    **Fix:** Request `MediaLibrary` permissions before attempting to save the file:
+
+    ```typescript
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant gallery access in Settings.');
+      return;
+    }
+    ```
+
+    If the user previously denied the permission, `requestPermissionsAsync` will not show the system dialog again. In that case, direct the user to grant the permission manually from the device Settings app.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,132 @@
+---
+title: "Get Started with the Social Media Downloader API"
+description: "Make your first video download API call in under 5 minutes. Fetch metadata, resolve a stream URL, and download a video with real code examples."
+---
+
+This guide walks you through your first end-to-end video download using the Social Media Downloader API. You will fetch video metadata, resolve a streamable URL, and trigger a download — all in three HTTP requests.
+
+## Prerequisites
+
+You need an HTTP client. Any of the following work:
+
+- **curl** (terminal)
+- **fetch** (browser or Node.js)
+- **axios** (Node.js / React Native)
+
+No API key is required. The API is open and CORS is enabled for all origins.
+
+## Steps
+
+<Steps>
+  <Step title="Fetch video metadata">
+    Call `POST /api/metadata` with the video URL to retrieve the title, thumbnail, duration, uploader, and platform.
+
+    ```bash
+    curl -X POST https://fastapi-u8bm.onrender.com/api/metadata \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.tiktok.com/@user/video/123"}'
+    ```
+
+    Response:
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "title": "My TikTok video",
+        "thumbnail": "https://cdn.example.com/thumb.jpg",
+        "duration": 45,
+        "uploader": "user",
+        "url": "https://www.tiktok.com/@user/video/123",
+        "platform": "tiktok"
+      }
+    }
+    ```
+
+    Use the `data` object to display a preview before the user starts the download.
+  </Step>
+
+  <Step title="Get the download URL">
+    Call `POST /api/get-direct-url` with the same video URL. The API resolves the real CDN URL and returns either a direct link or a proxy stream URL.
+
+    ```bash
+    curl -X POST https://fastapi-u8bm.onrender.com/api/get-direct-url \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.tiktok.com/@user/video/123"}'
+    ```
+
+    Response:
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "direct_url": "https://fastapi-u8bm.onrender.com/api/stream?url=https%3A%2F%2Fwww.tiktok.com%2F...&direct_url=<cdn>",
+        "filename": "video.mp4",
+        "filesize": 5200000,
+        "force_backend_stream": true
+      }
+    }
+    ```
+
+    When `force_backend_stream` is `true`, the `direct_url` already points to `/api/stream`. The API has pre-resolved the CDN URL and embedded it as a query parameter so the stream skips a second API call. You do not need to inspect this flag — just use `direct_url` as-is.
+  </Step>
+
+  <Step title="Download the video">
+    Make a `GET` request to the `direct_url` returned in step 2. The server streams the video bytes to your client with a `Content-Disposition: attachment` header that triggers a browser save-as dialog.
+
+    ```bash
+    curl -L -o video.mp4 \
+      "https://fastapi-u8bm.onrender.com/api/stream?url=<encoded-url>&direct_url=<encoded-cdn>"
+    ```
+
+    The response body is the raw video file. The `Content-Length` header is forwarded from the CDN when available, which lets native HTTP clients show accurate download progress.
+  </Step>
+</Steps>
+
+## JavaScript example (all three steps)
+
+The following example runs in the browser or in Node.js using the built-in `fetch` API.
+
+```javascript
+const BASE_URL = "https://fastapi-u8bm.onrender.com";
+
+async function downloadVideo(videoUrl) {
+  // Step 1: Fetch metadata
+  const metaRes = await fetch(`${BASE_URL}/api/metadata`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: videoUrl }),
+  });
+  const { data: meta } = await metaRes.json();
+  console.log(`Title: ${meta.title}, Duration: ${meta.duration}s`);
+
+  // Step 2: Resolve the download URL
+  const urlRes = await fetch(`${BASE_URL}/api/get-direct-url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: videoUrl }),
+  });
+  const { data: urlInfo } = await urlRes.json();
+
+  // Step 3: Download the video
+  const videoRes = await fetch(urlInfo.direct_url);
+  const blob = await videoRes.blob();
+
+  // Trigger browser download
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = urlInfo.filename || "video.mp4";
+  link.click();
+}
+
+downloadVideo("https://www.tiktok.com/@user/video/123");
+```
+
+<Note>
+  No authentication is required. There are no API keys, tokens, or account sign-ups. Every endpoint is open to any HTTP client.
+</Note>
+
+## Next steps
+
+See the [API Reference](/api-reference/metadata) for the full endpoint list, including real-time progress tracking with Server-Sent Events, the thumbnail proxy, and platform-specific endpoints.

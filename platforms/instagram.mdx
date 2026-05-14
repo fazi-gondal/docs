@@ -1,0 +1,149 @@
+---
+title: "Download Instagram Reels, Posts, and IGTV"
+description: "Download Instagram videos in HD (720p+) including Reels, Posts, and IGTV. Includes a CORS thumbnail proxy for displaying Instagram images in your app."
+---
+
+The API downloads Instagram videos through yt-dlp and delivers them at 720p or higher quality. Reels, feed posts, and IGTV are all supported. Because Instagram's CDN blocks direct requests from browsers and mobile apps, all downloads are routed through the server-side stream proxy — the same pattern used for TikTok.
+
+## Supported content types
+
+- **Posts** — standard video posts on a profile grid
+- **Reels** — short-form vertical video
+- **IGTV** — long-form video content
+
+All three are downloaded at the best available quality (720p+).
+
+## Download flow
+
+<Steps>
+  <Step title="Fetch metadata">
+    Call `POST /api/metadata` with the Instagram URL to get the title, thumbnail, and uploader.
+
+    ```bash
+    curl -X POST https://fastapi-u8bm.onrender.com/api/metadata \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.instagram.com/reel/AbCdEfGhIjK/"}'
+    ```
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "title": "Reel caption text",
+        "thumbnail": "https://cdn.instagram.com/cover.jpg",
+        "duration": 15,
+        "uploader": "username",
+        "platform": "instagram"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Get the stream URL">
+    Call `POST /api/get-direct-url`. The response returns a `/api/stream` proxy URL.
+
+    ```bash
+    curl -X POST https://fastapi-u8bm.onrender.com/api/get-direct-url \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.instagram.com/reel/AbCdEfGhIjK/"}'
+    ```
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "direct_url": "https://fastapi-u8bm.onrender.com/api/stream?url=...",
+        "filename": "reel_caption_text.mp4",
+        "filesize": 8400000,
+        "force_backend_stream": true
+      }
+    }
+    ```
+  </Step>
+  <Step title="Download via the stream URL">
+    Pass `direct_url` to your downloader. The server proxies the CDN bytes and forwards `Content-Length` for native progress tracking.
+
+    ```typescript
+    const downloadResumable = FileSystem.createDownloadResumable(
+      direct_url,
+      fileUri,
+      {},
+      (progress) => {
+        const pct = progress.totalBytesExpectedToWrite > 0
+          ? (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100
+          : 0;
+        setProgress(pct);
+      }
+    );
+    const result = await downloadResumable.downloadAsync();
+    ```
+  </Step>
+</Steps>
+
+## Thumbnail proxy
+
+Instagram CDN URLs include signed tokens that expire and include CORS restrictions. Rendering them directly in an `<Image>` component will produce 403 errors or blank images. Use the `GET /api/thumbnail` endpoint to proxy the image through the server:
+
+```bash
+GET /api/thumbnail?url=https://cdn.instagram.com/path/to/cover.jpg
+```
+
+In your React Native component:
+
+```typescript
+import { getThumbnailUrl } from '../services/videoDownloader';
+
+// getThumbnailUrl wraps the CDN URL in the proxy endpoint
+<Image source={{ uri: getThumbnailUrl(metadata.thumbnail) }} />
+```
+
+The proxy sets a `Cache-Control: public, max-age=3600` header, so images are cached for one hour on the client.
+
+## DASH streams: audio and video merged on the server
+
+Instagram sometimes delivers video and audio as separate DASH streams. If the downloaded file plays without audio, use `POST /api/server-stream` instead of the standard flow. This endpoint runs yt-dlp on the server, merges the DASH audio and video streams, and streams the merged file to your client.
+
+```bash
+curl -X POST https://fastapi-u8bm.onrender.com/api/server-stream \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.instagram.com/reel/AbCdEfGhIjK/"}' \
+  --output merged_video.mp4
+```
+
+The server deletes the temporary file immediately after streaming, so no data is retained.
+
+## Full example: fetch metadata and download
+
+```typescript
+import axios from 'axios';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const API_URL = 'https://fastapi-u8bm.onrender.com';
+
+const downloadInstagramVideo = async (url: string): Promise<string> => {
+  // Step 1: Get metadata for display
+  const metaResponse = await axios.post(`${API_URL}/api/metadata`, { url });
+  const metadata = metaResponse.data.data;
+
+  // Step 2: Get the proxied stream URL
+  const urlResponse = await axios.post(`${API_URL}/api/get-direct-url`, { url });
+  const { direct_url, filename } = urlResponse.data.data;
+
+  // Step 3: Download to device
+  const fileUri = `${FileSystem.documentDirectory}${filename}`;
+  const downloadResumable = FileSystem.createDownloadResumable(
+    direct_url,
+    fileUri,
+    {},
+    (progress) => {
+      const pct = progress.totalBytesExpectedToWrite > 0
+        ? (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100
+        : 0;
+      console.log(`Downloading: ${pct.toFixed(1)}%`);
+    }
+  );
+
+  const result = await downloadResumable.downloadAsync();
+  if (!result) throw new Error('Download failed');
+  return result.uri;
+};
+```

@@ -1,0 +1,80 @@
+{
+  "projectType": "api-service",
+  "projectName": "Social Media Downloader API",
+  "projectDescription": "A FastAPI-based video downloader API supporting Instagram, TikTok, YouTube, and 1000+ platforms with zero-disk streaming, server-side proxy, and real-time progress tracking.",
+  "theme": "luma",
+  "primaryColor": "#6366F1",
+  "lightColor": "#818CF8",
+  "darkColor": "#4338CA",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "deployment"]
+          },
+          {
+            "group": "Integration",
+            "pages": ["integration/web", "integration/react-native", "integration/typescript-service"]
+          },
+          {
+            "group": "Platforms",
+            "pages": ["platforms/overview", "platforms/tiktok", "platforms/instagram", "platforms/youtube"]
+          },
+          {
+            "group": "Configuration",
+            "pages": ["configuration/youtube-cookies", "configuration/cors"]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": ["troubleshooting/common-issues", "troubleshooting/error-handling"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api-reference/metadata",
+              "api-reference/get-direct-url",
+              "api-reference/stream",
+              "api-reference/tiktok-info",
+              "api-reference/proxy-stream",
+              "api-reference/server-stream",
+              "api-reference/download-start",
+              "api-reference/download-progress",
+              "api-reference/download-file",
+              "api-reference/thumbnail"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-platform video downloads from TikTok, Instagram, YouTube, Facebook, Twitter/X, and 1000+ sites",
+    "TikTok downloads without watermark in HD quality via TikWM API",
+    "Server-side stream proxy for bypassing CDN blocks on mobile and web",
+    "Real-time download progress via Server-Sent Events (SSE)",
+    "React Native / Expo integration with native progress bar support",
+    "Zero-disk streaming — no video data stored beyond auto-cleanup TTL",
+    "YouTube cookie support to bypass bot detection",
+    "CORS-enabled for web browsers, mobile apps, and Expo Go"
+  ],
+  "publicApiSurface": [
+    "POST /api/metadata",
+    "POST /api/get-direct-url",
+    "GET /api/stream",
+    "GET /api/tiktok/info",
+    "POST /api/proxy-stream",
+    "POST /api/server-stream",
+    "POST /api/download/start",
+    "GET /api/download/progress/{download_id}",
+    "GET /api/download/file/{download_id}",
+    "GET /api/thumbnail"
+  ]
+}

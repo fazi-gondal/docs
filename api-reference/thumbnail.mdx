@@ -1,0 +1,95 @@
+---
+title: "GET /api/thumbnail — CORS Proxy for Thumbnails"
+description: "Proxy CDN thumbnail images through the server to bypass CORS and 403 errors. Use in <Image> components in React Native or browser apps."
+sidebarTitle: "Thumbnail Proxy"
+---
+
+The `/api/thumbnail` endpoint proxies a CDN image URL through the server and forwards the response to the client. Use this when displaying video thumbnails returned by [`POST /api/metadata`](/api-reference/metadata) or [`GET /api/tiktok/info`](/api-reference/tiktok-info): CDN thumbnail URLs from platforms like TikTok and Instagram frequently return 403 errors when fetched directly from a browser or React Native app due to CORS restrictions and signed-URL hotlinking protection. The proxy attaches the appropriate request headers and caches the response for 1 hour.
+
+**Endpoint:** `GET /api/thumbnail`
+
+## Request parameters
+
+<ParamField query="url" type="string" required>
+  The URL-encoded CDN image URL to proxy. Must be a full absolute URL including scheme (e.g. `https://p16-sign.tiktokcdn-us.com/...`).
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+curl --get "https://fastapi-u8bm.onrender.com/api/thumbnail" \
+  --data-urlencode "url=https://p16-sign.tiktokcdn-us.com/obj/tos-useast5-p-0068-tx/cover.jpg" \
+  --output thumbnail.jpg
+```
+
+```javascript JavaScript
+// Build a proxied thumbnail URL from a raw CDN URL
+const cdnUrl = 'https://p16-sign.tiktokcdn-us.com/obj/tos-useast5-p-0068-tx/cover.jpg';
+const proxiedUrl =
+  `https://fastapi-u8bm.onrender.com/api/thumbnail?url=${encodeURIComponent(cdnUrl)}`;
+
+// Use in a standard <img> tag
+document.querySelector('img').src = proxiedUrl;
+```
+
+</CodeGroup>
+
+## Usage in React Native
+
+```jsx
+import { Image } from 'react-native';
+
+const BASE_URL = 'https://fastapi-u8bm.onrender.com';
+
+function VideoThumbnail({ thumbnailUrl }) {
+  const proxiedUrl = `${BASE_URL}/api/thumbnail?url=${encodeURIComponent(thumbnailUrl)}`;
+
+  return (
+    <Image
+      source={{ uri: proxiedUrl }}
+      style={{ width: 200, height: 150 }}
+      resizeMode="cover"
+    />
+  );
+}
+```
+
+## Usage in a web app
+
+```html
+<!-- Replace the raw CDN URL with the proxied URL -->
+<img
+  src="https://fastapi-u8bm.onrender.com/api/thumbnail?url=https%3A%2F%2Fp16-sign.tiktokcdn-us.com%2Fobj%2Ftos-useast5-p-0068-tx%2Fcover.jpg"
+  alt="Video thumbnail"
+  width="320"
+  height="180"
+/>
+```
+
+## Response
+
+On success the endpoint returns the raw image binary with the content type forwarded from the CDN.
+
+```
+HTTP/1.1 200 OK
+Content-Type: image/jpeg
+Cache-Control: public, max-age=3600
+```
+
+| Header | Description |
+|---|---|
+| `Content-Type` | Forwarded from the CDN response (e.g. `image/jpeg`, `image/webp`). Falls back to `image/jpeg` if the CDN does not send a content type. |
+| `Cache-Control` | `public, max-age=3600` — responses are cacheable for 1 hour. |
+
+## Error responses
+
+| Status | Condition |
+|---|---|
+| `404` | The CDN returned a non-200 status code (e.g. the thumbnail URL has expired or the image does not exist). |
+| `500` | A network error occurred while fetching the image (e.g. DNS failure, connection timeout after 10 seconds). |
+
+<Note>
+  Build proxied URLs on the client by calling `encodeURIComponent()` on the raw CDN URL before appending it to the `url` query parameter. Passing an unencoded URL with special characters will result in a malformed request.
+</Note>

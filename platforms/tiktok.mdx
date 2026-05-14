@@ -1,0 +1,156 @@
+---
+title: "Download TikTok Videos without Watermark"
+description: "Download TikTok videos in HD without watermarks using the TikWM API. Supports tiktok.com, vm.tiktok.com, and vt.tiktok.com URL formats."
+---
+
+The API downloads TikTok videos through the TikWM API, which provides HD, watermark-free copies of public TikTok content. All TikTok downloads are routed through a server-side proxy because TikTok's CDN blocks direct requests from mobile devices and browsers.
+
+## What you get
+
+The API requests the `hd=1` variant from TikWM, which returns the original HD upload without a TikTok watermark. If the HD version is unavailable, it falls back to the standard `play` quality (SD). The watermarked version (`wmplay`) is never used in the default download flow.
+
+## Supported URL formats
+
+The API accepts all common TikTok URL formats:
+
+- `https://www.tiktok.com/@username/video/7123456789012345678`
+- `https://vm.tiktok.com/ZMxxxxxx/`
+- `https://vt.tiktok.com/ZSxxxxxx/`
+
+## Download flow
+
+<Steps>
+  <Step title="Fetch metadata">
+    Call `POST /api/metadata` with the TikTok URL to get the title, thumbnail, uploader, and platform identifier.
+
+    ```bash
+    curl -X POST https://fastapi-u8bm.onrender.com/api/metadata \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.tiktok.com/@user/video/7123456789012345678"}'
+    ```
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "title": "Video caption text",
+        "thumbnail": "https://cdn.tiktok.com/cover.jpg",
+        "duration": 30,
+        "uploader": "username",
+        "platform": "tiktok"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Get the stream URL">
+    Call `POST /api/get-direct-url`. For TikTok, the response always contains a `/api/stream` proxy URL — the backend embeds the resolved CDN URL directly so no second API call is needed at download time.
+
+    ```bash
+    curl -X POST https://fastapi-u8bm.onrender.com/api/get-direct-url \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.tiktok.com/@user/video/7123456789012345678"}'
+    ```
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "direct_url": "https://fastapi-u8bm.onrender.com/api/stream?url=...&direct_url=<cdn_url>",
+        "filename": "video_caption_text.mp4",
+        "filesize": 5200000,
+        "force_backend_stream": true
+      }
+    }
+    ```
+  </Step>
+  <Step title="Download via the stream URL">
+    Pass `direct_url` to your HTTP client or `FileSystem.createDownloadResumable`. The server proxies CDN bytes chunk-by-chunk and forwards `Content-Length` from the CDN when available, enabling native progress bars.
+
+    ```typescript
+    const downloadResumable = FileSystem.createDownloadResumable(
+      direct_url,
+      fileUri,
+      {},
+      (progress) => {
+        const pct = progress.totalBytesExpectedToWrite > 0
+          ? (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100
+          : null;
+        // if pct is null, show received MB instead (see note below)
+      }
+    );
+    const result = await downloadResumable.downloadAsync();
+    ```
+  </Step>
+</Steps>
+
+## Rich TikTok data: `/api/tiktok/info`
+
+If you need more than the standard metadata — for example, to display the watermarked version, show music information, or access engagement stats — use the `GET /api/tiktok/info` endpoint.
+
+```bash
+GET /api/tiktok/info?url=https://www.tiktok.com/@user/video/7123456789012345678
+```
+
+The response returns the full raw TikWM data object:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "7123456789012345678",
+    "title": "Video caption text",
+    "cover": "https://cdn.tiktok.com/cover.jpg",
+    "play": "https://cdn.tikwm.com/video.mp4",
+    "wmplay": "https://cdn.tikwm.com/wm_video.mp4",
+    "hdplay": "https://cdn.tikwm.com/hd_video.mp4",
+    "music": "https://cdn.tikwm.com/audio.mp3",
+    "music_info": {
+      "id": "7098765432109876543",
+      "title": "Song Name",
+      "author": "Artist Name",
+      "duration": 60
+    },
+    "author": {
+      "id": "98765432",
+      "unique_id": "username",
+      "nickname": "Display Name",
+      "avatar": "https://cdn.tiktok.com/avatar.jpg"
+    },
+    "duration": 30,
+    "size": 5200000,
+    "hd_size": 3800000,
+    "digg_count": 10000,
+    "comment_count": 500,
+    "share_count": 2000,
+    "create_time": 1712345678
+  }
+}
+```
+
+## Fetching TikTok info in TypeScript
+
+```typescript
+const fetchTikTokInfo = async (url: string) => {
+  const response = await axios.get(`${API_URL}/api/tiktok/info`, {
+    params: { url }
+  });
+  if (!response.data.success) throw new Error('Failed to fetch TikTok info');
+  return response.data.data;
+  // Returns: { hdplay, play, wmplay, cover, author, music_info, duration, ... }
+};
+```
+
+<Note>
+TikTok CDN URLs expire in approximately 6 hours. If a download fails with a network or 403 error after this window, call `POST /api/get-direct-url` again to get a fresh stream URL.
+</Note>
+
+<Note>
+TikTok's CDN sometimes uses chunked transfer encoding and omits the `Content-Length` header. When this happens, `totalBytesExpectedToWrite` is `-1` and percentage-based progress cannot be calculated. Show the number of megabytes received instead:
+
+```typescript
+const pct = progress.totalBytes > 0 ? progress.percentage : null;
+const label = pct !== null
+  ? `${pct.toFixed(0)}%`
+  : `${(progress.downloadedBytes / 1024 / 1024).toFixed(1)} MB downloaded`;
+```
+</Note>

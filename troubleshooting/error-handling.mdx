@@ -1,0 +1,72 @@
+---
+title: "API Error Codes and Handling"
+description: "Handle errors from the Social Media Downloader API: HTTP status codes, error response format, and axios error handling patterns for robust integrations."
+---
+
+Every error the API returns follows the same structure, so you can write a single error handler that works across all endpoints. Building in proper error handling makes your integration resilient to the transient failures — expired tokens, cold starts, unsupported URLs — that are a normal part of working with third-party video platforms.
+
+## Error response format
+
+All error responses use the following JSON body with an HTTP error status code:
+
+```json
+{
+  "detail": "error message string"
+}
+```
+
+The `detail` field always contains a human-readable description of what went wrong. Check this field first when debugging an unexpected failure.
+
+## HTTP status codes
+
+| Status | Meaning | Common cause |
+|--------|---------|--------------|
+| 400 | Bad Request | Invalid URL, unsupported platform |
+| 404 | Not Found | Download ID not found, thumbnail not found |
+| 500 | Internal Server Error | CDN token expired, yt-dlp failure |
+| 502 | Bad Gateway | CDN returned an error |
+
+## Error handling in JavaScript and TypeScript
+
+Use `axios.isAxiosError` to distinguish API errors from unexpected runtime exceptions. Read `error.response?.data?.detail` to get the server's error message, and check `error.code` for network-level failures.
+
+```typescript
+import axios from 'axios';
+
+try {
+  const metadata = await VideoDownloaderAPI.getMetadata(url);
+} catch (error) {
+  if (axios.isAxiosError(error)) {
+    const errorDetail = error.response?.data?.detail || error.message;
+    if (errorDetail.includes('Invalid URL')) {
+      // handle invalid URL — show user a validation message
+    } else if (error.code === 'ERR_NETWORK') {
+      // handle network error — check connectivity or wait for server warm-up
+    } else {
+      // handle all other API errors
+      console.error('API error:', errorDetail);
+    }
+  } else {
+    // non-Axios error — unexpected runtime exception
+    console.error('Unexpected error:', error);
+  }
+}
+```
+
+## Expected response times
+
+Set your request timeouts with these ranges in mind. Operations that involve yt-dlp processing or large file streaming will be at the longer end when the server is under load.
+
+| Operation | Expected time |
+|-----------|---------------|
+| Metadata fetch | 2–5 seconds |
+| Video download (short) | 5–15 seconds |
+| Video download (long) | 30–60 seconds |
+| Progress updates | Real-time (500ms intervals) |
+
+## Best practices
+
+- **Show loading states** during every API call so users know a request is in progress.
+- **Validate URLs on the client** before sending them to the API — check that the URL matches a supported platform pattern to avoid unnecessary 400 errors.
+- **Set reasonable timeouts** on your axios instance. A timeout of 60–120 seconds is appropriate for long video downloads.
+- **Detect offline before calling the API.** Check network availability using `NetInfo` (React Native) or the browser `navigator.onLine` API before initiating a download request.

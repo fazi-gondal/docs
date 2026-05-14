@@ -1,0 +1,49 @@
+---
+title: "Supported Video Platforms and Download Quality"
+description: "The Social Media Downloader API supports TikTok, Instagram, YouTube, Facebook, Twitter/X, Vimeo, Reddit, and 1000+ other platforms via yt-dlp."
+---
+
+The Social Media Downloader API works with TikTok, Instagram, YouTube, and over 1000 additional video platforms. Most platforms are handled automatically through yt-dlp, while TikTok and Instagram receive platform-specific treatment for higher quality and watermark-free output.
+
+## Platform support
+
+| Platform | Quality | Special features | Platform identifier |
+|---|---|---|---|
+| TikTok | HD (no watermark) | TikWM API, server proxy | `tiktok` |
+| Instagram | 720p+ | Reels, Posts, IGTV, CORS thumbnail proxy | `instagram` |
+| YouTube | Best video+audio (MP4) | Cookie support for bot bypass | `youtube` |
+| Facebook | Best available | yt-dlp | `facebook` |
+| Twitter/X | Best available | yt-dlp | `twitter` |
+| Vimeo | Best available | yt-dlp | `vimeo` |
+| Reddit | Best available | yt-dlp | `reddit` |
+| 1000+ others | Best available | yt-dlp | various |
+
+## The `platform` field
+
+Every response from `POST /api/metadata` includes a `platform` field that identifies which platform the URL belongs to. You can use this value to customize your UI — for example, showing a "No watermark" badge for TikTok or a "720p+" label for Instagram.
+
+<Note>
+The `platform` identifier is returned in the `data` object of every `POST /api/metadata` response. Use it to conditionally display platform-specific UI or select the right download strategy in your app.
+</Note>
+
+```json
+{
+  "success": true,
+  "data": {
+    "title": "Video title",
+    "thumbnail": "https://cdn.example.com/cover.jpg",
+    "duration": 30,
+    "uploader": "username",
+    "platform": "tiktok",
+    "url": "https://www.tiktok.com/@user/video/123456"
+  }
+}
+```
+
+## Per-platform guides
+
+For detailed download flows, URL formats, and platform-specific options, see the individual platform pages:
+
+- [TikTok — HD, no watermark](/platforms/tiktok)
+- [Instagram — Reels, Posts, and IGTV](/platforms/instagram)
+- [YouTube — best quality with cookie support](/platforms/youtube)

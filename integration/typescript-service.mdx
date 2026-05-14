@@ -1,0 +1,176 @@
+---
+title: "TypeScript Service for Video Downloads"
+description: "A ready-to-use TypeScript service module for the Social Media Downloader API. Drop it into your React Native or Expo project with zero configuration."
+---
+
+The `services/videoDownloader.ts` module is a self-contained TypeScript service you can drop into any React Native or Expo project. It wraps the two-step download flow — `POST /api/metadata` followed by `POST /api/get-direct-url` and `FileSystem.createDownloadResumable` — into three clean exported functions. No environment variables, no build-time configuration: the production API URL is bundled into the module.
+
+## Installation
+
+```bash
+npx expo install expo-file-system expo-media-library axios
+```
+
+## Complete service module
+
+Save this file to `services/videoDownloader.ts` in your project:
+
+```typescript
+import axios from 'axios';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const API_URL = 'https://fastapi-u8bm.onrender.com';
+
+/**
+ * Sanitize filename for safe filesystem storage
+ */
+const sanitizeFilename = (filename: string): string => {
+  try { filename = decodeURIComponent(filename); } catch (e) {}
+  return filename
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[^\w\-. ]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .substring(0, 100)
+    || `video_${Date.now()}.mp4`;
+};
+
+/**
+ * Step 1: Fetch video metadata for UI display
+ */
+export const fetchVideoMetadata = async (url: string) => {
+  const response = await axios.post(`${API_URL}/api/metadata`, { url });
+  if (!response.data.success) throw new Error('Failed to fetch metadata');
+  return response.data.data;
+};
+
+/**
+ * Step 2 + 3: Get download URL and download to device
+ * The backend returns an /api/stream proxy URL for all platforms —
+ * no client-side platform switching needed.
+ */
+export const downloadVideo = async (
+  videoUrl: string,
+  metadata: any,
+  onProgress?: (progress: { totalBytes: number; downloadedBytes: number; percentage: number }) => void
+): Promise<string> => {
+  // Get the proxied stream URL from backend
+  const response = await axios.post(`${API_URL}/api/get-direct-url`, { url: videoUrl });
+  if (!response.data.success) throw new Error('Failed to get download URL');
+
+  const { direct_url, filename } = response.data.data;
+  const sanitizedFilename = sanitizeFilename(filename || `${Date.now()}_video.mp4`);
+  const fileUri = `${FileSystem.documentDirectory}${sanitizedFilename}`;
+
+  // Clean up any partial file from a previous failed attempt
+  await FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
+
+  // Download using Expo FileSystem — Content-Length forwarded for real progress
+  const downloadResumable = FileSystem.createDownloadResumable(
+    direct_url,
+    fileUri,
+    {},
+    (downloadProgress) => {
+      onProgress?.({
+        totalBytes: downloadProgress.totalBytesExpectedToWrite,
+        downloadedBytes: downloadProgress.totalBytesWritten,
+        percentage: downloadProgress.totalBytesExpectedToWrite > 0
+          ? (downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite) * 100
+          : 0,
+      });
+    }
+  );
+
+  const result = await downloadResumable.downloadAsync();
+  if (!result) throw new Error('Download failed');
+  return result.uri;
+};
+
+/**
+ * Proxy thumbnail URL through backend to bypass CDN CORS
+ */
+export const getThumbnailUrl = (thumbnailUrl: string): string =>
+  `${API_URL}/api/thumbnail?url=${encodeURIComponent(thumbnailUrl)}`;
+```
+
+## Function reference
+
+### `fetchVideoMetadata(url)`
+
+Calls `POST /api/metadata` and returns video info for display in your UI before the user triggers a download.
+
+```typescript
+const metadata = await fetchVideoMetadata('https://www.tiktok.com/@user/video/123456');
+// Returns: { title, thumbnail, duration, uploader, platform, url }
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `url` | `string` | The social media video URL to look up |
+
+**Returns:** `Promise<{ title: string; thumbnail: string; duration: number; uploader: string; platform: string; url: string }>`
+
+---
+
+### `downloadVideo(videoUrl, metadata, onProgress?)`
+
+Calls `POST /api/get-direct-url` to resolve the stream URL, then downloads the file to the device's document directory using `FileSystem.createDownloadResumable`. Returns the local file URI.
+
+```typescript
+const localUri = await downloadVideo(
+  'https://www.tiktok.com/@user/video/123456',
+  metadata,
+  (progress) => {
+    console.log(`${progress.percentage.toFixed(1)}% — ${progress.downloadedBytes} bytes`);
+  }
+);
+// localUri: 'file:///data/user/0/.../documents/video_title.mp4'
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `videoUrl` | `string` | The social media video URL to download |
+| `metadata` | `any` | Metadata object from `fetchVideoMetadata` (used for context) |
+| `onProgress` | `(progress) => void` | Optional callback called with `{ totalBytes, downloadedBytes, percentage }` |
+
+**Returns:** `Promise<string>` — local file URI on the device
+
+---
+
+### `getThumbnailUrl(thumbnailUrl)`
+
+Wraps a CDN thumbnail URL in the `/api/thumbnail` proxy endpoint. Use this in `<Image>` components to avoid 403 errors and CORS failures when displaying thumbnails from TikTok, Instagram, or YouTube CDNs.
+
+```typescript
+const proxiedUrl = getThumbnailUrl(metadata.thumbnail);
+
+<Image source={{ uri: proxiedUrl }} style={{ width: 200, height: 150 }} />
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `thumbnailUrl` | `string` | The original CDN thumbnail URL from metadata |
+
+**Returns:** `string` — the proxied URL via `https://fastapi-u8bm.onrender.com/api/thumbnail?url=...`
+
+---
+
+## Endpoint mapping
+
+| Function | Method | Endpoint |
+|----------|--------|----------|
+| `fetchVideoMetadata` | `POST` | `/api/metadata` |
+| `downloadVideo` | `POST` | `/api/get-direct-url` |
+| `downloadVideo` (stream) | `GET` | `/api/stream` (called automatically by `FileSystem`) |
+| `getThumbnailUrl` | `GET` | `/api/thumbnail` |
+
+<Tip>
+The `sanitizeFilename` function strips non-ASCII characters, collapses whitespace to underscores, and truncates filenames at 100 characters. This prevents filesystem errors on both Android and iOS when video titles contain emoji, Arabic script, or other multibyte characters. The function is intentionally not exported — it runs automatically inside `downloadVideo` before the file URI is constructed.
+</Tip>

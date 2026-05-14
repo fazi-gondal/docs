@@ -1,0 +1,96 @@
+---
+title: "Deploy the Social Media Downloader API"
+description: "Host your own instance of the Social Media Downloader API on Render, Koyeb, or any platform supporting Python. Includes environment and Procfile setup."
+---
+
+You can self-host the Social Media Downloader API on any platform that runs Python. This page covers deploying to Render (the recommended path) and running the server locally for development. The API has no external service dependencies beyond the packages in `requirements.txt`, so deployment is straightforward.
+
+## Deploy to Render
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the source code to your local machine.
+
+    ```bash
+    git clone https://github.com/fazi-gondal/FastAPI.git
+    cd FastAPI
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install the Python packages locally to verify everything resolves before pushing.
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+  </Step>
+
+  <Step title="Push to GitHub">
+    Create a new repository on GitHub and push the code. Render deploys directly from a GitHub repo.
+
+    ```bash
+    git remote set-url origin https://github.com/<your-username>/<your-repo>.git
+    git push -u origin main
+    ```
+  </Step>
+
+  <Step title="Connect to Render and configure the service">
+    1. Go to [render.com](https://render.com) and create a new **Web Service**.
+    2. Connect your GitHub repository.
+    3. Set the following commands:
+
+    **Build command:**
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    **Start command:**
+
+    ```bash
+    uvicorn main:app --host 0.0.0.0 --port $PORT
+    ```
+
+    Render injects `$PORT` automatically. Leave it as-is.
+  </Step>
+
+  <Step title="Deploy and access your instance">
+    Click **Deploy**. Render builds the image, installs dependencies, and starts the server. Once the deploy completes, Render assigns a URL in the format `https://<your-service-name>.onrender.com`.
+
+    Test it with:
+
+    ```bash
+    curl https://<your-service-name>.onrender.com/api/metadata \
+      -X POST \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
+    ```
+  </Step>
+</Steps>
+
+## Local development
+
+To run the server on your machine:
+
+```bash
+python main.py
+```
+
+The server starts at `http://localhost:8000`. The built-in web interface is available at that address. API endpoints are at `http://localhost:8000/api/...`.
+
+## Requirements
+
+- **Python**: 3.11 or later
+- **Packages** (from `requirements.txt`):
+
+| Package | Purpose |
+|---|---|
+| `fastapi` | Web framework and request routing |
+| `uvicorn` | ASGI server |
+| `yt-dlp` | Video extraction for 1000+ platforms |
+| `httpx` | Async HTTP client for CDN proxying |
+| `aiofiles` | Async file I/O |
+
+<Note>
+  The public production instance is hosted at `https://fastapi-u8bm.onrender.com`. If you are building against that URL for testing, you do not need to deploy your own instance.
+</Note>

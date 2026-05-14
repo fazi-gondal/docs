@@ -1,0 +1,73 @@
+---
+title: "Configure YouTube Cookie Authentication"
+description: "Bypass YouTube bot detection by exporting browser cookies to cookies.txt. Required for downloading age-restricted or bot-challenged YouTube videos."
+---
+
+YouTube uses bot detection to block automated requests. When you provide your browser's session cookies, the API authenticates on your behalf and YouTube treats the request as coming from a real user. Without cookies, certain videos return a 403 error or trigger a bot challenge that prevents the download from completing.
+
+## When you need this
+
+You will need to configure cookies if you encounter any of the following:
+
+- Age-restricted videos that require a signed-in account
+- A bot detection challenge that stops the download mid-request
+- A 403 Forbidden error returned from YouTube (visible in the API error detail)
+
+Cookie setup is optional for publicly available, non-age-restricted YouTube videos.
+
+## Cookie setup
+
+<Steps>
+  <Step title="Install the browser extension">
+    Install the [Get cookies.txt Locally](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension from the Chrome Web Store. It works in Chrome and any Chromium-based browser such as Edge or Brave.
+  </Step>
+  <Step title="Go to YouTube and sign in">
+    Open [youtube.com](https://youtube.com) in your browser and sign in to the Google account you want to use for downloads. The exported cookies represent this account's session.
+  </Step>
+  <Step title="Export cookies for youtube.com">
+    Click the extension icon in your browser toolbar while you are on the YouTube tab. Select **Export** or **Download** to generate the cookies file. The extension exports cookies only for the current site.
+  </Step>
+  <Step title="Save the file as cookies.txt in the project root">
+    Rename the downloaded file to `cookies.txt` and place it in the same directory as `main.py`:
+
+    ```
+    FastAPI/
+    ├── main.py
+    ├── downloader.py
+    ├── cookies.txt   ← place it here
+    ├── requirements.txt
+    └── ...
+    ```
+
+    The server auto-detects the file at startup — no code changes are needed.
+  </Step>
+  <Step title="Restart the server">
+    Restart the server so it picks up the new file:
+
+    ```bash
+    python main.py
+    ```
+
+    If you are running on Render or Koyeb, trigger a manual redeploy from the service dashboard. On startup you should see the following line in the logs:
+
+    ```
+    Using cookies from: /path/to/cookies.txt
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  `cookies.txt` is already listed in `.gitignore`. It will not be committed to version control, so you do not need to add it yourself.
+</Note>
+
+## Troubleshooting
+
+If you still get bot detection errors after adding the file, the cookies have likely expired. Re-export them from your browser using the same steps above — make sure you are still signed in to YouTube when you do. Common reasons cookies expire:
+
+- You changed your Google account password
+- You signed out of YouTube
+- More than six months have passed since the last export
+
+<Warning>
+  Never share your `cookies.txt` file. It contains your active YouTube session credentials. Anyone who has the file can access YouTube as your account.
+</Warning>

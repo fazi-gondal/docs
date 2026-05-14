@@ -1,0 +1,91 @@
+---
+title: "POST /api/server-stream — Server-Download and Stream"
+description: "Download a video with yt-dlp on the server (merging DASH audio+video), then stream the merged file to the client. Use for Instagram DASH streams with no audio."
+sidebarTitle: "Server Stream"
+---
+
+The `/api/server-stream` endpoint downloads a video using yt-dlp directly on the server, which handles merging separate DASH audio and video tracks into a single MP4 file. Once downloaded, the merged file is streamed to the client in 64 KB chunks and immediately deleted from the server's temporary storage. Use this endpoint for Instagram posts and any other platform that serves video and audio as separate DASH streams — direct CDN proxying would produce a video-only file with no audio.
+
+**Endpoint:** `POST /api/server-stream`
+
+## Request parameters
+
+<ParamField body="url" type="string" required>
+  The full URL of the video to download and stream. Instagram posts, Reels, and IGTV URLs are the primary use case. YouTube and other yt-dlp-supported URLs also work.
+</ParamField>
+
+## Request example
+
+<CodeGroup>
+
+```bash curl
+curl --request POST \
+  --url https://fastapi-u8bm.onrender.com/api/server-stream \
+  --header 'Content-Type: application/json' \
+  --output video.mp4 \
+  --data '{
+    "url": "https://www.instagram.com/reel/ABC123xyz/"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://fastapi-u8bm.onrender.com/api/server-stream', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    url: 'https://www.instagram.com/reel/ABC123xyz/'
+  })
+});
+
+// The Content-Length header is present — track progress with it
+const total = parseInt(response.headers.get('Content-Length') || '0', 10);
+const reader = response.body.getReader();
+let received = 0;
+const chunks = [];
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  chunks.push(value);
+  received += value.length;
+  if (total) console.log(`Progress: ${Math.round((received / total) * 100)}%`);
+}
+
+const blob = new Blob(chunks, { type: 'video/mp4' });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'video.mp4';
+a.click();
+```
+
+</CodeGroup>
+
+## Response
+
+The endpoint returns a binary video stream after yt-dlp finishes downloading and merging the file on the server.
+
+```
+HTTP/1.1 200 OK
+Content-Type: video/mp4
+Content-Disposition: attachment; filename="Instagram_Reel_ABC123.mp4"; filename*=UTF-8''Instagram_Reel_ABC123.mp4
+Content-Length: 18700000
+Cache-Control: no-cache
+X-Accel-Buffering: no
+```
+
+| Header | Description |
+|---|---|
+| `Content-Type` | Always `video/mp4`. |
+| `Content-Disposition` | `attachment` with the sanitized video title as the filename. |
+| `Content-Length` | Exact file size in bytes of the merged file. Always present because the file is fully written before streaming begins. |
+| `Cache-Control` | Always `no-cache`. |
+| `X-Accel-Buffering` | `no` to disable Nginx proxy buffering. |
+
+<Warning>
+  This endpoint downloads the entire video to the server's temp directory before any bytes reach the client. For long videos this can take 30–60 seconds before the stream begins. The temp file is deleted immediately after streaming completes (or if an error occurs). Do not use this endpoint for real-time or progressive streaming scenarios.
+</Warning>
+
+<Note>
+  The server stores the video in a temporary directory for the duration of the stream, then deletes it immediately after the response is sent. Files left un-streamed for more than 1 hour are cleaned up automatically when the server restarts.
+</Note>
